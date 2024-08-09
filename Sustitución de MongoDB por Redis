@@ -1,0 +1,149 @@
+import redis
+import json
+import sys
+
+REDIS_HOST = 'localhost'
+REDIS_PORT = 6379
+REDIS_DB = 0
+
+def connect_db():
+    return redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=True)
+
+def agregar_receta(redis_conn):
+    nombre = input('Nombre de la receta: ')
+    if not nombre:
+        print('El nombre de la receta no puede estar vacío.')
+        return
+
+    receta_id = redis_conn.incr('receta_id')  # Incrementa un contador para obtener un nuevo ID
+    receta_key = f'receta:{receta_id}'
+    redis_conn.hset(receta_key, 'nombre', nombre)
+
+    while True:
+        ingrediente = input('Agregar ingrediente (o dejar vacío para terminar): ')
+        if not ingrediente:
+            break
+        redis_conn.rpush(f'receta:{receta_id}:ingredientes', ingrediente)
+
+    while True:
+        paso = input('Agregar paso (o dejar vacío para terminar): ')
+        if not paso:
+            break
+        redis_conn.rpush(f'receta:{receta_id}:pasos', paso)
+
+    print('Receta agregada exitosamente.')
+
+def actualizar_receta(redis_conn):
+    receta_id = input('ID de la receta a actualizar: ')
+    if not receta_id:
+        print('ID inválido.')
+        return
+
+    receta_key = f'receta:{receta_id}'
+    if not redis_conn.exists(receta_key):
+        print('Receta no encontrada.')
+        return
+
+    nombre = input('Nuevo nombre de la receta (dejar en blanco para no cambiar): ')
+    if nombre:
+        redis_conn.hset(receta_key, 'nombre', nombre)
+
+    while True:
+        ingrediente = input('Actualizar ingrediente (o dejar vacío para terminar): ')
+        if not ingrediente:
+            break
+        redis_conn.rpush(f'receta:{receta_id}:ingredientes', ingrediente)
+
+    while True:
+        paso = input('Actualizar paso (o dejar vacío para terminar): ')
+        if not paso:
+            break
+        redis_conn.rpush(f'receta:{receta_id}:pasos', paso)
+
+    print('Receta actualizada exitosamente.')
+
+def eliminar_receta(redis_conn):
+    receta_id = input('ID de la receta a eliminar: ')
+    if not receta_id:
+        print('ID inválido.')
+        return
+
+    receta_key = f'receta:{receta_id}'
+    if not redis_conn.exists(receta_key):
+        print('Receta no encontrada.')
+        return
+
+    redis_conn.delete(receta_key)
+    redis_conn.delete(f'receta:{receta_id}:ingredientes')
+    redis_conn.delete(f'receta:{receta_id}:pasos')
+
+    print('Receta eliminada exitosamente.')
+
+def ver_listado_recetas(redis_conn):
+    receta_ids = [key.split(':')[1] for key in redis_conn.keys('receta:*') if 'nombre' in redis_conn.hkeys(key)]
+    if receta_ids:
+        for receta_id in receta_ids:
+            nombre = redis_conn.hget(f'receta:{receta_id}', 'nombre')
+            print(f'ID: {receta_id}, Nombre: {nombre}')
+    else:
+        print('No hay recetas en la base de datos.')
+
+def buscar_ingredientes_pasos(redis_conn):
+    receta_id = input('ID de la receta para buscar ingredientes y pasos: ')
+    if not receta_id:
+        print('ID inválido.')
+        return
+
+    receta_key = f'receta:{receta_id}'
+    if not redis_conn.exists(receta_key):
+        print('Receta no encontrada.')
+        return
+
+    nombre = redis_conn.hget(receta_key, 'nombre')
+    print(f'Nombre: {nombre}')
+
+    print('Ingredientes:')
+    ingredientes = redis_conn.lrange(f'receta:{receta_id}:ingredientes', 0, -1)
+    if ingredientes:
+        for ingrediente in ingredientes:
+            print(f'- {ingrediente}')
+    else:
+        print('No hay ingredientes para esta receta.')
+
+    print('Pasos:')
+    pasos = redis_conn.lrange(f'receta:{receta_id}:pasos', 0, -1)
+    if pasos:
+        for paso in pasos:
+            print(f'- {paso}')
+    else:
+        print('No hay pasos para esta receta.')
+
+def main():
+    redis_conn = connect_db()
+    while True:
+        print('\nOpciones:')
+        print('a) Agregar nueva receta')
+        print('c) Actualizar receta existente')
+        print('d) Eliminar receta existente')
+        print('e) Ver listado de recetas')
+        print('f) Buscar ingredientes y pasos de receta')
+        print('g) Salir')
+        opcion = input('Seleccione una opción: ')
+        if opcion == 'a':
+            agregar_receta(redis_conn)
+        elif opcion == 'c':
+            actualizar_receta(redis_conn)
+        elif opcion == 'd':
+            eliminar_receta(redis_conn)
+        elif opcion == 'e':
+            ver_listado_recetas(redis_conn)
+        elif opcion == 'f':
+            buscar_ingredientes_pasos(redis_conn)
+        elif opcion == 'g':
+            print('Saliendo...')
+            sys.exit()
+        else:
+            print('Opción no válida.')
+
+if __name__ == '__main__':
+    main()
