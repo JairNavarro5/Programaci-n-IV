@@ -1,0 +1,182 @@
+from sqlalchemy import create_engine, Column, Integer, String, ForeignKey
+from sqlalchemy.orm import sessionmaker, relationship, declarative_base
+import sys
+
+DATABASE_URL = 'mysql+mysqlclient://username:password@localhost/recetas_db'  # Cambia por tus credenciales
+
+Base = declarative_base()
+
+class Receta(Base):
+    __tablename__ = 'recetas'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    nombre = Column(String, nullable=False)
+    ingredientes = relationship('Ingrediente', back_populates='receta', cascade='all, delete-orphan')
+    pasos = relationship('Paso', back_populates='receta', cascade='all, delete-orphan')
+
+class Ingrediente(Base):
+    __tablename__ = 'ingredientes'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    receta_id = Column(Integer, ForeignKey('recetas.id'))
+    ingrediente = Column(String, nullable=False)
+    receta = relationship('Receta', back_populates='ingredientes')
+
+class Paso(Base):
+    __tablename__ = 'pasos'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    receta_id = Column(Integer, ForeignKey('recetas.id'))
+    paso = Column(String, nullable=False)
+    receta = relationship('Receta', back_populates='pasos')
+
+def connect_db():
+    engine = create_engine(DATABASE_URL)
+    Base.metadata.create_all(engine)
+    return sessionmaker(bind=engine)()
+
+def agregar_receta(session):
+    nombre = input('Nombre de la receta: ')
+    if not nombre:
+        print('El nombre de la receta no puede estar vacío.')
+        return
+
+    receta = Receta(nombre=nombre)
+    session.add(receta)
+    session.commit()
+    
+    while True:
+        ingrediente = input('Agregar ingrediente (o dejar vacío para terminar): ')
+        if not ingrediente:
+            break
+        ingrediente_obj = Ingrediente(ingrediente=ingrediente, receta=receta)
+        session.add(ingrediente_obj)
+    
+    while True:
+        paso = input('Agregar paso (o dejar vacío para terminar): ')
+        if not paso:
+            break
+        paso_obj = Paso(paso=paso, receta=receta)
+        session.add(paso_obj)
+    
+    session.commit()
+    print('Receta agregada exitosamente.')
+
+def actualizar_receta(session):
+    try:
+        id_receta = int(input('ID de la receta a actualizar: '))
+    except ValueError:
+        print('ID inválido. Debe ser un número entero.')
+        return
+    
+    receta = session.query(Receta).filter_by(id=id_receta).first()
+    if not receta:
+        print('Receta no encontrada.')
+        return
+
+    nombre = input('Nuevo nombre de la receta (dejar en blanco para no cambiar): ')
+    if nombre:
+        receta.nombre = nombre
+
+    while True:
+        ingrediente = input('Actualizar ingrediente (o dejar vacío para terminar): ')
+        if not ingrediente:
+            break
+        ingrediente_obj = session.query(Ingrediente).filter_by(receta_id=id_receta, ingrediente=ingrediente).first()
+        if not ingrediente_obj:
+            ingrediente_obj = Ingrediente(ingrediente=ingrediente, receta=receta)
+        else:
+            ingrediente_obj.ingrediente = ingrediente
+        session.add(ingrediente_obj)
+    
+    while True:
+        paso = input('Actualizar paso (o dejar vacío para terminar): ')
+        if not paso:
+            break
+        paso_obj = session.query(Paso).filter_by(receta_id=id_receta, paso=paso).first()
+        if not paso_obj:
+            paso_obj = Paso(paso=paso, receta=receta)
+        else:
+            paso_obj.paso = paso
+        session.add(paso_obj)
+    
+    session.commit()
+    print('Receta actualizada exitosamente.')
+
+def eliminar_receta(session):
+    try:
+        id_receta = int(input('ID de la receta a eliminar: '))
+    except ValueError:
+        print('ID inválido. Debe ser un número entero.')
+        return
+    
+    receta = session.query(Receta).filter_by(id=id_receta).first()
+    if not receta:
+        print('Receta no encontrada.')
+        return
+
+    session.delete(receta)
+    session.commit()
+    print('Receta eliminada exitosamente.')
+
+def ver_listado_recetas(session):
+    recetas = session.query(Receta).all()
+    if recetas:
+        for receta in recetas:
+            print(f'ID: {receta.id}, Nombre: {receta.nombre}')
+    else:
+        print('No hay recetas en la base de datos.')
+
+def buscar_ingredientes_pasos(session):
+    try:
+        id_receta = int(input('ID de la receta para buscar ingredientes y pasos: '))
+    except ValueError:
+        print('ID inválido. Debe ser un número entero.')
+        return
+    
+    receta = session.query(Receta).filter_by(id=id_receta).first()
+    if not receta:
+        print('Receta no encontrada.')
+        return
+
+    print('Ingredientes:')
+    if receta.ingredientes:
+        for ingrediente in receta.ingredientes:
+            print(f'- {ingrediente.ingrediente}')
+    else:
+        print('No hay ingredientes para esta receta.')
+
+    print('Pasos:')
+    if receta.pasos:
+        for paso in receta.pasos:
+            print(f'- {paso.paso}')
+    else:
+        print('No hay pasos para esta receta.')
+
+def main():
+    session = connect_db()
+    while True:
+        print('\nOpciones:')
+        print('a) Agregar nueva receta')
+        print('c) Actualizar receta existente')
+        print('d) Eliminar receta existente')
+        print('e) Ver listado de recetas')
+        print('f) Buscar ingredientes y pasos de receta')
+        print('g) Salir')
+        opcion = input('Seleccione una opción: ')
+        if opcion == 'a':
+            agregar_receta(session)
+        elif opcion == 'c':
+            actualizar_receta(session)
+        elif opcion == 'd':
+            eliminar_receta(session)
+        elif opcion == 'e':
+            ver_listado_recetas(session)
+        elif opcion == 'f':
+            buscar_ingredientes_pasos(session)
+        elif opcion == 'g':
+            print('Saliendo...')
+            session.close()
+            sys.exit()
+        else:
+            print('Opción no válida.')
+
+if __name__ == '__main__':
+    main()
